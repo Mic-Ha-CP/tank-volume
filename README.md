@@ -6,6 +6,10 @@
 
 部署在 GitHub Pages：**https://mic-ha-cp.github.io/tank-volume/**
 
+## 截图
+
+![卧式储罐容积计算器截图](screenshot.png)
+
 ## 功能
 
 - **三个输入**：直径 D、长度 L、液面高度 h（从底部量起）。
