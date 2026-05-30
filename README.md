@@ -8,7 +8,16 @@
 
 ## 截图
 
-![卧式储罐容积计算器截图](screenshot.png)
+<table>
+  <tr>
+    <th>电脑端</th>
+    <th>手机端</th>
+  </tr>
+  <tr>
+    <td><img src="screenshot-desktop.png" width="420" alt="电脑端界面"></td>
+    <td><img src="screenshot-mobile.png" width="240" alt="手机端界面"></td>
+  </tr>
+</table>
 
 ## 功能
 

@@ -13,8 +13,8 @@
             padding: 16px 12px;
             box-sizing: border-box;
         }
-        h2, p { text-align: center; }
-        .inputs, .result { width: 100%; max-width: 480px; }
+        h2, p { text-align: center; width: 100%; max-width: 480px; box-sizing: border-box; min-width: 0; }
+        .inputs, .result { width: 100%; max-width: 480px; min-width: 0; }   /* min-width:0 解除 flex 子项默认不收缩，使 width/overflow 生效 */
         canvas { border: 1px solid #ccc; margin: 10px 0; max-width: 100%; height: auto; box-sizing: border-box; }
         .inputs { margin: 10px 0; }
         .inputs label { display: inline-block; width: 110px; }
@@ -22,15 +22,16 @@
         .inputs select { padding: 5px; margin: 3px; box-sizing: border-box; }
         input, select { font-size: 16px; }   /* ≥16px 防止 iOS Safari 聚焦自动放大 */
         .result { font-size: 1.1em; margin: 10px 0; }
-        .result table { border-collapse: collapse; width: 100%; }
-        .result th, .result td { border: 1px solid #ccc; padding: 4px 12px; text-align: right; }
+        .result table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+        .result th, .result td { border: 1px solid #ccc; padding: 4px 12px; text-align: right; overflow-wrap: anywhere; }
         .result th { background: #f2f2f2; }
         .result td.unit { text-align: left; font-weight: normal; color: #555; }
+        .result th:first-child, .result td:first-child { width: 40%; }   /* 单位列更宽，避免标签换行 */
         .result .percent { margin-top: 8px; font-weight: bold; text-align: center; }
         .result .error { color: #c00; font-weight: bold; }
         @media (max-width: 480px) {
-            .result { font-size: 1em; }
-            .result th, .result td { padding: 4px 6px; }
+            .result { font-size: 0.8em; overflow-x: auto; }   /* 窄屏缩小表格字号，溢出时可横向滚动 */
+            .result th, .result td { padding: 3px 5px; }
             .inputs label { display: block; width: auto; }
             .inputs input { width: 50%; }
         }
