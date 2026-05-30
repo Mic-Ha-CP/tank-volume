@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>卧式储罐容积计算器</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 16px 12px;
+            box-sizing: border-box;
+        }
+        h2, p { text-align: center; }
+        .inputs, .result { width: 100%; max-width: 480px; }
+        canvas { border: 1px solid #ccc; margin: 10px 0; max-width: 100%; height: auto; box-sizing: border-box; }
+        .inputs { margin: 10px 0; }
+        .inputs label { display: inline-block; width: 110px; }
+        .inputs input { width: 40%; max-width: 140px; padding: 5px; margin: 3px; box-sizing: border-box; }
+        .inputs select { padding: 5px; margin: 3px; box-sizing: border-box; }
+        input, select { font-size: 16px; }   /* ≥16px 防止 iOS Safari 聚焦自动放大 */
+        .result { font-size: 1.1em; margin: 10px 0; }
+        .result table { border-collapse: collapse; width: 100%; }
+        .result th, .result td { border: 1px solid #ccc; padding: 4px 12px; text-align: right; }
+        .result th { background: #f2f2f2; }
+        .result td.unit { text-align: left; font-weight: normal; color: #555; }
+        .result .percent { margin-top: 8px; font-weight: bold; text-align: center; }
+        .result .error { color: #c00; font-weight: bold; }
+        @media (max-width: 480px) {
+            .result { font-size: 1em; }
+            .result th, .result td { padding: 4px 6px; }
+            .inputs label { display: block; width: auto; }
+            .inputs input { width: 50%; }
+        }
+    </style>
+</head>
+<body>
+    <h2>卧式储罐容积计算器</h2>
+    <p>直径 D 与长度 L 任意，液面高度 h 从底部量起</p>
+    <div class="inputs">
+        <label>直径 D：</label><input id="D" type="number" inputmode="decimal" value="2" step="any"><select id="D_unit"></select><br>
+        <label>长度 L：</label><input id="L" type="number" inputmode="decimal" value="5" step="any"><select id="L_unit"></select><br>
+        <label>液面高度 h：</label><input id="h" type="number" inputmode="decimal" value="0.6" step="any"><select id="h_unit"></select><br>
+    </div>
+    <div class="result" id="result">体积: --</div>
+    <canvas id="canvas" width="300" height="300"></canvas>
+    <p style="color:gray">横截面示意图（蓝色=液体）</p>
+
+    <script>
+        // 长度 -> 米（基准单位）
+        const LENGTH_UNITS = { cm: 0.01, m: 1, in: 0.0254, ft: 0.3048 };
+        const LENGTH_LABELS = { cm: '厘米 cm', m: '米 m', in: '英寸 in', ft: '英尺 ft' };
+
+        // 立方米 -> 各体积单位（用于输出换算）
+        const VOLUME_UNITS = {
+            'm³':      { factor: 1,            label: '立方米 m³' },
+            'L':       { factor: 1000,         label: '升 L' },
+            'US gal':  { factor: 264.1720524,  label: '美制加仑 US gal' },
+            'Imp gal': { factor: 219.9692483,  label: '英制加仑 Imp gal' },
+            'US qt':   { factor: 1056.688209,  label: '美制夸脱 US qt' },
+            'ft³':     { factor: 35.31466672,  label: '立方英尺 ft³' },
+        };
+
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const inputs = ['D', 'L', 'h'].map(id => document.getElementById(id));
+        const unitSelects = ['D_unit', 'L_unit', 'h_unit'].map(id => document.getElementById(id));
+        const resultDiv = document.getElementById('result');
+
+        // 填充三个长度单位下拉框，默认选中“米”
+        unitSelects.forEach(sel => {
+            Object.keys(LENGTH_UNITS).forEach(u => {
+                const opt = document.createElement('option');
+                opt.value = u;
+                opt.textContent = LENGTH_LABELS[u];
+                if (u === 'm') opt.selected = true;
+                sel.appendChild(opt);
+            });
+        });
+
+        // 纯计算函数：入参均为“米”，返回立方米
+        function calcVolume(D, L, h) {
+            const R = D / 2;
+            const hc = Math.max(0, Math.min(h, D)); // 限制在 0~D
+            const d = R - hc;                       // 圆心到液面的距离
+            // 弓形面积
+            const area = R * R * Math.acos(d / R) - d * Math.sqrt(R * R - d * d);
+            return { volume: area * L, total: Math.PI * R * R * L, hc };
+        }
+
+        function calculate() {
+            // 读取数值并按所选单位转换为米
+            const D = parseFloat(inputs[0].value) * LENGTH_UNITS[unitSelects[0].value];
+            const L = parseFloat(inputs[1].value) * LENGTH_UNITS[unitSelects[1].value];
+            const h = parseFloat(inputs[2].value) * LENGTH_UNITS[unitSelects[2].value];
+
+            if (isNaN(D) || isNaN(L) || isNaN(h) || D <= 0 || L <= 0) {
+                resultDiv.innerHTML = '<span class="error">请输入有效的正数</span>';
+                drawTank(0, 0, 0);
+                return;
+            }
+
+            const { volume, total, hc } = calcVolume(D, L, h); // 立方米
+            const percent = total > 0 ? volume / total * 100 : 0;
+
+            // 多单位输出表格：总容积 / 液体体积 并列
+            const rows = Object.values(VOLUME_UNITS).map(u =>
+                `<tr><td class="unit">${u.label}</td>` +
+                `<td>${(total * u.factor).toFixed(4)}</td>` +
+                `<td>${(volume * u.factor).toFixed(4)}</td></tr>`
+            ).join('');
+            resultDiv.innerHTML =
+                `<table><thead><tr><th>单位</th><th>总容积</th><th>液体体积</th></tr></thead>` +
+                `<tbody>${rows}</tbody></table>` +
+                `<div class="percent">充满度: ${percent.toFixed(2)}%</div>`;
+
+            drawTank(D / 2, D, hc); // 传入已转换为米的值
+        }
+
+        function drawTank(R, D, h) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const cx = 150, cy = 150, r = 120; // 绘图参数
+            if (R === 0) return;
+
+            const scale = r / R; // 实际尺寸到画布的比例
+            const dy = (R - h) * scale; // 圆心到液面的画布距离 (向下为正)
+            const yLiquid = cy + dy;    // 液面在画布上的 y 坐标
+
+            // 计算液面线端点角度
+            const angle1 = Math.asin(dy / r); // 右交点角度 (弧度)
+            const angle2 = Math.PI - angle1;  // 左交点角度
+
+            // 绘制液体区域（弓形）
+            ctx.beginPath();
+            // 从右交点开始，顺时针画弧到左交点，再直线返回
+            ctx.arc(cx, cy, r, angle1, angle2, false); // 顺时针：Math.PI - angle1 小于？注意：arc默认逆时针，第三个参数 true 才是逆？逆时针是false。我们需要画下半部分，检查方向。
+            // 当 dy>0 (h<R)：angle1 在0~π/2，angle2在π/2~π。逆时针从 angle1 到 angle2 会画上半部分，不对。我们要画下半部分（经过底部）。
+            // 所以我们应该用 顺时针 (counterclockwise=true) 从 angle2 到 angle1？我们来测试：顺时针从右交点(angle1)到左交点(angle2)会走上面，不好。
+            // 正确做法：弧方向设为 counterclockwise=true (逆时针)，但参数是从 angle2 到 angle1？ 我们需要明确。
+            // 液体部分总是“液面以下”，即圆心以下部分（若 h<R）或以上部分？当 h<R，液体在下面，路径：从右交点沿圆弧经过底部到左交点。
+            // 这个弧在标准数学坐标（y向上）是从 -theta 到 pi+theta? 使用canvas坐标，考虑简单方法：填充整个圆，再填充上半部分白色？不优雅。
+            // 重新设计：液体区域由弧和线段组成。我们可以计算起始角和终止角，使得弧总是包含底部。
+            // 底部在 canvas 中是 (cx, cy+r)，角度为 π/2 (90°)。 
+            // 液体区域是从右交点 → 顺时针 → 底部 → 顺时针 → 左交点 → 直线回右交点。
+            // 在canvas中，顺时针方向角度减小。如果我们设置逆时针为false (默认顺时针)，角度从 起始角 走到 终止角 是顺时针。
+            // 我们希望从右交点(angle1)顺时针经过底部到左交点(angle2)。因为顺时针角度减小，从 angle1 减小到 angle2？angle1 < angle2，顺时针减小会从 angle1 变小到负数，绕一圈到 angle2? 这复杂。
+            // 简单正确的方法：使用 arc(cx, cy, r, startAngle, endAngle, counterclockwise)，当 counterclockwise=false 为顺时针。
+            // 如果我们要画下半圆（液体在下），从 angle1 (正，右) 顺时针走到 angle2 (更大，左) 需要角度增加？顺时针是角度减小。
+            // 所以应该从 angle2 顺时针走到 angle1。即 startAngle = angle2, endAngle = angle1, counterclockwise=false。这样顺时针从大角度走到小角度，经过底部（π/2）? angle2 ~150°, angle1~30°，顺时针从150°减小到30°会经过90°底部，正确。
+            // 当 dy<0 (h>R) 液体在上方？实际液体是大于半圆，液体区域包括底部及两侧向上。此时 dy负，angle1负（-30°），angle2 = π - (-30°) = 210°。液体部分应该是从右交点( -30°)逆时针？我们要填充的是液面以下，液面y_liquid = cy + dy (dy负，液面在圆心上方)。液体包含所有y坐标 > y_liquid 的区域，即圆心以下及部分上部。该区域弧段：从右交点沿圆弧经过底部到左交点。在canvas中，右交点角度-30° (即330°)，左交点210°，顺时针从210°到330°（减小）会经过底部270°？210°->180°->90°->360°->330°? 混乱。
+            // 改用更通用的方法：使用 clip 或者直接绘制路径，不必纠结方向。我们定义液体的两个端点：右端点 (cx + x, yLiquid)，左端点 (cx - x, yLiquid)，其中 x = sqrt(r^2 - dy^2)。然后使用 ctx.beginPath(); 移动到右端点，ctx.arcTo? 直接使用 arc 绘制圆弧，选择正确的方向：我们需要的是包含底部的那段圆弧。判断：如果 h <= R (dy>=0)，液体在下半部分，圆弧是下半圆；如果 h > R，液体大于半圆，圆弧是大半圆（包含底部和两侧）。这个圆弧始终是从右端点沿“较长”的弧到达左端点（若液面低于圆心，较长弧是下半弧；若液面高于圆心，较长弧是大于半圆的弧）。其实对于任意 h，液体部分就是被液面截开后含有底部的那一侧。所以弧总是“经过底部”的弧，即包含角度 π/2 (或270°) 的那侧。
+            // 我们可以通过计算右端点和左端点的角度，然后判断哪个弧包含底部。但为了简化，统一方法：使用两个半弧拼接，或者改用填充整个圆然后清空上部。最简单：先画整圆，然后用白色覆盖液面以上部分（不优雅）。 
+            // 但为了代码简单且准确，我采用“绘制路径填充”的更稳健方式：使用 ctx.ellipse 或 arc 配合 save/restore 与 clip。可以：ctx.save(); ctx.beginPath(); ctx.rect(0, 0, canvas.width, yLiquid); ctx.clip(); 然后画圆填充蓝色。这样液体区域就是液面以下被裁剪的圆。然后恢复，再画圆边框和液面线。这个方法最简单且不会出错！
+            // 就用 clip 方法。
+
+            // 清除重绘
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // 1. 绘制液体（蓝色）
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(0, yLiquid, canvas.width, canvas.height - yLiquid); // 液面以下区域
+            ctx.clip();
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+            ctx.fillStyle = '#4a90e2';
+            ctx.fill();
+            ctx.restore();
+
+            // 2. 绘制圆轮廓
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // 3. 绘制液面线
+            if (h >= 0 && h <= D) {
+                const x = Math.sqrt(Math.max(r * r - dy * dy, 0));
+                ctx.beginPath();
+                ctx.moveTo(cx - x, yLiquid);
+                ctx.lineTo(cx + x, yLiquid);
+                ctx.strokeStyle = 'red';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                // 标注高度
+                ctx.fillStyle = 'red';
+                ctx.font = '14px sans-serif';
+                ctx.fillText('h', cx + x + 5, yLiquid - 5);
+            }
+
+            // 4. 绘制中心点
+            ctx.beginPath();
+            ctx.arc(cx, cy, 3, 0, 2 * Math.PI);
+            ctx.fillStyle = '#333';
+            ctx.fill();
+        }
+
+        // 输入事件监听
+        inputs.forEach(inp => inp.addEventListener('input', calculate));
+        unitSelects.forEach(sel => sel.addEventListener('change', calculate));
+        window.addEventListener('load', calculate);
+    </script>
+</body>
+</html>
